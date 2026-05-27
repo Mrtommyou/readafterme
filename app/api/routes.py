@@ -60,10 +60,27 @@ async def upload_video(file: UploadFile = File(...)):
     # Generate unique ID
     video_id = str(uuid.uuid4())[:8]
 
-    # Save uploaded file
+    # Save uploaded file (original may be HEVC — will transcode below)
     video_path = UPLOAD_DIR / f"{video_id}_{file.filename}"
     content = await file.read()
     video_path.write_bytes(content)
+
+    # Transcode to H.264 for browser compatibility
+    transcode_path = video_path.with_suffix(".h264.mp4")
+    try:
+        import subprocess as sp
+        sp.run(
+            ["ffmpeg", "-y", "-i", str(video_path),
+             "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+             "-c:a", "aac", "-b:a", "128k",
+             "-movflags", "+faststart",
+             str(transcode_path)],
+            capture_output=True, timeout=300,
+        )
+        video_path.unlink()
+        transcode_path.rename(video_path)
+    except Exception:
+        transcode_path.unlink(missing_ok=True)
 
     # Extract audio
     audio_path = AUDIO_DIR / f"{video_id}.wav"
