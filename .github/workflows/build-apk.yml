@@ -42,11 +42,26 @@ jobs:
           [ -f /tmp/flutter_backup/analysis_options.yaml ] && cp /tmp/flutter_backup/analysis_options.yaml flutter_app/analysis_options.yaml
           echo "Restore done"
 
-      - name: Bump compileSdkVersion to 36
-        run: |
-          sed -i 's/compileSdkVersion [0-9]\+/compileSdkVersion 36/' android/app/build.gradle
-          grep compileSdkVersion android/app/build.gradle
+      - name: Bump compileSdkVersion to 36 and enable cleartext
         working-directory: flutter_app
+        run: |
+          # Patch compileSdkVersion
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/compileSdkVersion [0-9]\+/compileSdkVersion 36/' android/app/build.gradle
+            grep compileSdkVersion android/app/build.gradle
+          elif [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk\s*=\s*[0-9]\+/compileSdk = 36/' android/app/build.gradle.kts
+            grep "compileSdk" android/app/build.gradle.kts
+          else
+            echo "ERROR: no build.gradle found!" >&2
+            exit 1
+          fi
+          # Enable cleartext HTTP for local dev server
+          manifest="android/app/src/main/AndroidManifest.xml"
+          if ! grep -q "usesCleartextTraffic" "$manifest"; then
+            sed -i 's|<application|<application\n        android:usesCleartextTraffic="true"|' "$manifest"
+          fi
+          grep "usesCleartextTraffic" "$manifest" || true
 
       - name: Get Flutter dependencies
         working-directory: flutter_app
