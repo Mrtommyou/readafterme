@@ -123,7 +123,7 @@ class AppProvider extends ChangeNotifier {
   // ── Upload ───────────────────────────────────────────────────────────
 
   Future<void> pickAndUploadFile() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.video,
       allowMultiple: false,
       withData: true,
