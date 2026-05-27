@@ -10,7 +10,7 @@ class AudioRecorderService {
 
   Future<String> start() async {
     _recorder = FlutterSoundRecorder();
-    await _recorder!.openAudioSession();
+    await _recorder!.openRecorder();
     final dir = await getTemporaryDirectory();
     _outputPath = '${dir.path}/recording_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorder!.startRecorder(
@@ -25,14 +25,14 @@ class AudioRecorderService {
     final path = _outputPath;
     _outputPath = null;
     await _recorder!.stopRecorder();
-    await _recorder!.closeAudioSession();
+    await _recorder!.closeRecorder();
     _recorder = null;
     if (path != null && File(path).existsSync()) return path;
     return null;
   }
 
   void dispose() {
-    _recorder?.closeAudioSession();
+    _recorder?.closeRecorder();
     _recorder = null;
   }
 }
