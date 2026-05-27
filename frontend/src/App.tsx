@@ -302,8 +302,6 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
   const [recordingDuration, setRecordingDuration] = useState(0)
   const recTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [playing, setPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
 
   // Fetch sentences when video is selected
   useEffect(() => {
@@ -319,7 +317,6 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
       setActiveIdx(0)
       setScores(null)
       setRecordedBlob(null)
-      setCurrentTime(0)
     }).catch(() => {
       setSentences([])
     }).finally(() => setLoading(false))
@@ -329,7 +326,6 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
   const onTimeUpdate = () => {
     if (!videoRef.current || sentences.length === 0) return
     const t = videoRef.current.currentTime
-    setCurrentTime(t)
 
     // Pause when current sentence finishes (user can replay easily)
     const cur = sentences[activeIdx]
@@ -352,7 +348,6 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
     setRecordedBlob(null)
     videoRef.current.currentTime = sentences[idx].start
     videoRef.current.play()
-    setPlaying(true)
   }
 
   // Start recording
@@ -436,10 +431,6 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
     }
   }
 
-  const refDuration = sentences[activeIdx]
-    ? sentences[activeIdx].end - sentences[activeIdx].start
-    : 0
-
   // No video selected — prompt user
   if (!selectedVideoId) {
     return (
@@ -483,9 +474,6 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
               src={`/api/videos/${selectedVideoId}/file`}
               className="w-full aspect-video object-contain bg-black"
               onTimeUpdate={onTimeUpdate}
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-              onLoadedMetadata={() => { if (videoRef.current) videoRef.current.playbackRate = 1 }}
               controls
               playsInline
             />
