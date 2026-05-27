@@ -22,15 +22,31 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate android/ scaffold
-        working-directory: flutter_app
-        run: flutter create --project-name read_after_me --org com.readafterme .
+      - name: Backup custom sources
+        run: |
+          mkdir -p /tmp/flutter_backup
+          cp flutter_app/pubspec.yaml /tmp/flutter_backup/
+          cp -r flutter_app/lib /tmp/flutter_backup/
+          cp flutter_app/analysis_options.yaml /tmp/flutter_backup/ 2>/dev/null || true
+          rm -rf flutter_app
+          echo "Backup done"
+
+      - name: Create fresh Flutter project
+        run: flutter create --project-name read_after_me --org com.readafterme flutter_app
+
+      - name: Restore custom Dart sources
+        run: |
+          cp /tmp/flutter_backup/pubspec.yaml flutter_app/pubspec.yaml
+          rm -rf flutter_app/lib
+          cp -r /tmp/flutter_backup/lib flutter_app/lib
+          [ -f /tmp/flutter_backup/analysis_options.yaml ] && cp /tmp/flutter_backup/analysis_options.yaml flutter_app/analysis_options.yaml
+          echo "Restore done"
 
       - name: Bump compileSdkVersion to 36
-        working-directory: flutter_app
         run: |
           sed -i 's/compileSdkVersion [0-9]\+/compileSdkVersion 36/' android/app/build.gradle
           grep compileSdkVersion android/app/build.gradle
+        working-directory: flutter_app
 
       - name: Get Flutter dependencies
         working-directory: flutter_app
