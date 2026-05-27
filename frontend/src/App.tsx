@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Capacitor } from '@capacitor/core'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,15 @@ const SCORE_STYLES = {
   mid: 'text-amber-600 bg-amber-50 border-amber-200',
   low: 'text-rose-600 bg-rose-50 border-rose-200',
 } as const
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const byteChars = atob(base64)
+  const bytes = new Uint8Array(byteChars.length)
+  for (let i = 0; i < byteChars.length; i++) {
+    bytes[i] = byteChars.charCodeAt(i)
+  }
+  return new Blob([bytes], { type: mimeType })
+}
 
 function scoreBadge(score: number) {
   if (score >= 80) return SCORE_STYLES.high
@@ -166,6 +176,38 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const isNative = Capacitor.isNativePlatform()
+
+  const pickAndUploadFile = useCallback(async () => {
+    if (!isNative) {
+      fileRef.current?.click()
+      return
+    }
+    try {
+      const { FilePicker } = await import('@capawesome/capacitor-file-picker')
+      const result = await FilePicker.pickFiles({
+        types: ['video/*', 'video/mp4', 'video/avi', 'video/quicktime', 'video/x-matroska', 'video/webm'],
+        limit: 1,
+        readData: true,
+      })
+      const file = result.files[0]
+      if (!file) return
+      const mime = file.mimeType || 'video/mp4'
+      const raw = file.data
+        ? base64ToBlob(file.data, mime)
+        : file.blob
+        ? file.blob
+        : null
+      if (!raw) {
+        alert('无法读取文件数据')
+        return
+      }
+      const f = new File([raw], file.name, { type: mime })
+      doUpload(f)
+    } catch (e: any) {
+      alert('选择文件失败: ' + (e.message || '未知错误'))
+    }
+  }, [isNative])
 
   const doUpload = useCallback(async (file: File) => {
     if (!file.name.match(/\.(mp4|avi|mov|mkv|webm)$/i)) {
@@ -195,6 +237,10 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
     if (file) doUpload(file)
   }, [doUpload])
 
+  const handleZoneClick = useCallback(() => {
+    pickAndUploadFile()
+  }, [pickAndUploadFile])
+
   return (
     <div className="animate-enter max-w-3xl mx-auto px-4 md:px-8 py-4 md:py-8 space-y-6 md:space-y-8">
       <div>
@@ -204,7 +250,7 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
 
       {/* Upload zone */}
       <div
-        onClick={() => fileRef.current?.click()}
+        onClick={handleZoneClick}
         onDrop={handleDrop}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
