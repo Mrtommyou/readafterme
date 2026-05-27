@@ -14,7 +14,7 @@ class AudioRecorderService {
     final dir = await getTemporaryDirectory();
     _outputPath = '${dir.path}/recording_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await _recorder.start(
-      const RecordConfig(encoder: AudioEncoder.aacLc),
+      const RecordConfig(AudioEncoder.aacLc),
       path: _outputPath!,
     );
     return _outputPath!;

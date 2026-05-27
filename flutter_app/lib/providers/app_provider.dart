@@ -232,4 +232,5 @@ class AppProvider extends ChangeNotifier {
         return 'video/mp4';
     }
   }
+}
 
