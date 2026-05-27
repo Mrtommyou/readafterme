@@ -1,0 +1,22 @@
+[project]
+name = "read-after-me"
+version = "0.1.0"
+description = "English shadowing practice app"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "aiofiles",
+    "pydub",
+    "numpy",
+    "Levenshtein",
+]
+
+[project.scripts]
+read-after-me = "app.main:run"
+
+[tool.uv]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+required-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
