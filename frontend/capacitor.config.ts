@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'ReadAfterMe',
   webDir: 'dist',
   server: {
-    url: 'http://10.0.0.233:8000',
+    url: 'http://10.0.0.233:9004',
     cleartext: true,
   },
 };
