@@ -43,7 +43,7 @@ jobs:
           SDK_ROOT=~/.buildozer/android/platform/android-sdk
           mkdir -p "$SDK_ROOT"
           cd "$SDK_ROOT"
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-latest.zip
+          curl -sSOL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-*.zip
           mkdir -p cmdline-tools/latest
           mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/NOTICE.txt cmdline-tools/latest/
