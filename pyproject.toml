@@ -12,6 +12,7 @@ dependencies = [
     "pydub",
     "numpy",
     "Levenshtein",
+    "translators>=5",
 ]
 
 [project.scripts]
