@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Lint kivy_app with ruff
+        run: uv run ruff check kivy_app/
+      - name: Lint app with ruff
+        run: uv run ruff check app/ core/
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Android APK
+        uses: digreatbrian/buildozer-action@v1
+        with:
+          working-directory: kivy_app
+          args: android debug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: readafterme-apk
+          path: kivy_app/bin/*.apk

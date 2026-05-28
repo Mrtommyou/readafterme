@@ -1,20 +1,18 @@
 """REST API routes for ReadAfterMe."""
 
 import json
-import uuid
-import os
 import time
+import uuid
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
-from app.schemas import Sentence, VideoInfo, ProcessResult, ScoreResult, HistoryItem
-from core.audio import extract_audio, get_audio_duration
+from app.schemas import HistoryItem, ProcessResult, ScoreResult, Sentence, VideoInfo
 from core.asr import transcribe
-from core.translate import translate_batch
+from core.audio import extract_audio, get_audio_duration
 from core.scoring import score_recording as score_user_recording
+from core.translate import translate_batch
 
 router = APIRouter()
 

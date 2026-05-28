@@ -1,9 +1,10 @@
 """Scoring module — comprehensive pronunciation, fluency, and timing evaluation."""
 
 import json
-import subprocess
 import math
+import subprocess
 from pathlib import Path
+
 from Levenshtein import distance as lev_dist
 
 

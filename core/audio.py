@@ -1,7 +1,6 @@
 """Audio extraction module — video to 16kHz mono WAV via ffmpeg."""
 
 import subprocess
-import os
 from pathlib import Path
 
 

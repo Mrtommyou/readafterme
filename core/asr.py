@@ -6,9 +6,7 @@ Designed for CPU-only, works on musl/Alpine.
 
 import json
 import subprocess
-import tempfile
 from pathlib import Path
-from typing import Optional
 
 # Path to whisper.cpp binary and model
 WHISPER_CLI = Path("/tmp/whisper.cpp/build/bin/whisper-cli")

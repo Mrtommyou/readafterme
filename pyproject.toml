@@ -20,3 +20,15 @@ read-after-me = "app.main:run"
 [tool.uv]
 index-url = "https://mirrors.aliyun.com/pypi/simple/"
 required-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[dependency-groups]
+dev = ["ruff>=0.11.0"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+
