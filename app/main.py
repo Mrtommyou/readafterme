@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 AUDIO_DIR = DATA_DIR / "audio"
+FRONTEND_DIR = ROOT / "frontend" / "dist"
 
 # Ensure data directories exist
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -24,7 +26,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS — allow all origins (Capacitor app + dev server)
+# CORS — allow all origins (mobile app + dev server)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,6 +37,10 @@ app.add_middleware(
 
 # Mount API routes
 app.include_router(api_router, prefix="/api")
+
+# Serve frontend (Vite build output)
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 
 
 @app.get("/health")
