@@ -24,15 +24,15 @@ jobs:
 
   build:
     needs: lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Build Android APK
-        uses: digreatbrian/buildozer-action@v1
+        uses: digreatbrian/buildozer-action@v2
         with:
-          working-directory: kivy_app
-          args: android debug
+          python-version: 3.12
+          buildozer-cmd: cd kivy_app && buildozer -v android debug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
