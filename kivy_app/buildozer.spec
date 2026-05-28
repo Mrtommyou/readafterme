@@ -12,7 +12,7 @@ source.include_exts = py,png,jpg,kv,atlas,ttf
 
 version = 0.1
 
-requirements = python3,kivy,plyer,requests,pyjnius,soundfile,sounddevice,numpy
+requirements = python3,kivy,plyer,requests,pyjnius
 
 orientation = portrait
 
