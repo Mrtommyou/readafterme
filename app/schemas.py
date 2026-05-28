@@ -33,10 +33,11 @@ class ScoreRequest(BaseModel):
 
 class ScoreResult(BaseModel):
     """Scoring result for a single sentence."""
-    pronunciation: float  # 0-100
-    fluency: float       # 0-100
-    timing: float         # 0-100
-    overall: float        # 0-100
+    pronunciation: float  # 0-100, accuracy/phoneme correctness
+    fluency: float       # 0-100, rate + gap penalty
+    timing: float         # 0-100, duration match vs reference
+    completeness: float   # 0-100, fraction of reference words spoken
+    overall: float        # 0-100, weighted combination
 
 
 class PracticeSession(BaseModel):
@@ -52,5 +53,7 @@ class HistoryItem(BaseModel):
     """History entry shown in the history page."""
     date: str
     video: str
+    video_id: str
     sentences: int
-    score: float
+    practiced: int       # number of sentences that have been practiced
+    avg_score: float     # average overall score of practiced sentences
