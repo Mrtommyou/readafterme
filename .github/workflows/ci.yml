@@ -34,7 +34,7 @@ jobs:
             -v $PWD/kivy_app:/workspace \
             -w /workspace \
             ghcr.io/kivy/buildozer:latest \
-            buildozer -v android debug
+            bash -c "yes | buildozer -v android debug"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
