@@ -14,8 +14,10 @@ interface Sentence {
 interface HistoryItem {
   date: string
   video: string
+  video_id: string
   sentences: number
-  score: number
+  practiced: number
+  avg_score: number
 }
 
 interface VideoInfo {
@@ -25,15 +27,11 @@ interface VideoInfo {
   status: string
 }
 
-interface ProcessResult {
-  video_id: string
-  sentences: Sentence[]
-}
-
 interface ScoreResult {
   pronunciation: number
   fluency: number
   timing: number
+  completeness: number
   overall: number
 }
 
@@ -47,16 +45,10 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-const SCORE_STYLES = {
-  high: 'text-emerald-600 bg-emerald-50 border-emerald-200',
-  mid: 'text-amber-600 bg-amber-50 border-amber-200',
-  low: 'text-rose-600 bg-rose-50 border-rose-200',
-} as const
-
-function scoreBadge(score: number) {
-  if (score >= 80) return SCORE_STYLES.high
-  if (score >= 60) return SCORE_STYLES.mid
-  return SCORE_STYLES.low
+function medalDisplay(score: number) {
+  if (score >= 80) return { emoji: '🥇', text: String(score), cls: 'text-amber-600 bg-amber-50 border-amber-300' }
+  if (score >= 60) return { emoji: '🥈', text: String(score), cls: 'text-slate-500 bg-slate-50 border-slate-300' }
+  return { emoji: '🥉', text: '继续加油', cls: 'text-rose-500 bg-rose-50 border-rose-200' }
 }
 
 // ── Score Ring Component ───────────────────────────────────────────────────
@@ -107,7 +99,7 @@ function Navbar({ active, onTabChange }: { active: Tab; onTabChange: (t: Tab) =>
         <div className="flex items-center gap-2 md:gap-2.5 text-lg md:text-xl font-bold tracking-tight select-none shrink-0">
           <span className="text-xl md:text-2xl">🎤</span>
           <span className="text-coral-dark">Read</span>
-          <span className="text-slate-600 hidden sm:inline">AfterMe</span>
+          <span className="text-slate-600">AfterMe</span>
         </div>
         <nav className="flex items-center gap-0.5 md:gap-1 overflow-x-auto w-full justify-end md:justify-start">
           {tabs.map((t) => (
@@ -138,33 +130,77 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
   onStartPractice: (id: string, name: string) => void
 }) {
   const [uploading, setUploading] = useState(false)
+  const [processingId, setProcessingId] = useState<string | null>(null)
+  const [processingStep, setProcessingStep] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const processingNameRef = useRef('')
+
+  const handleDelete = useCallback(async (id: string, name: string) => {
+    if (!window.confirm(`确定删除「${name}」及其所有练习记录？`)) return
+    try {
+      await fetch(`/api/videos/${id}`, { method: 'DELETE' })
+      onVideosChange()
+    } catch {
+      alert('删除失败')
+    }
+  }, [onVideosChange])
 
   const pickAndUploadFile = useCallback(() => {
     fileRef.current?.click()
   }, [])
+
+  // Poll processing status
+  useEffect(() => {
+    if (!processingId) {
+      if (pollRef.current) clearInterval(pollRef.current)
+      return
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/videos/${processingId}/status`)
+        if (!res.ok) throw new Error()
+        const data = await res.json()
+        if (data.status === '已处理' || data.done) {
+          clearInterval(pollRef.current!)
+          setProcessingId(null)
+          setUploading(false)
+          onVideosChange()
+          onStartPractice(processingId, processingNameRef.current)
+        } else {
+          setProcessingStep(data.step || '处理中...')
+        }
+      } catch {
+        clearInterval(pollRef.current!)
+        setProcessingId(null)
+        setUploading(false)
+      }
+    }, 2000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [processingId, onVideosChange, onStartPractice])
 
   const doUpload = useCallback(async (file: File) => {
     if (!file.name.match(/\.(mp4|avi|mov|mkv|webm)$/i)) {
       alert('不支持的文件格式。支持: mp4, avi, mov, mkv, webm')
       return
     }
+    processingNameRef.current = file.name.replace(/\.[^.]+$/, '')
     setUploading(true)
     try {
       const form = new FormData()
       form.append('file', file)
-      const result = await api<ProcessResult>('/api/upload', { method: 'POST', body: form })
+      const res = await fetch('/api/upload', { method: 'POST', body: form })
+      if (!res.ok) throw new Error(`上传失败: ${res.status}`)
+      const result = await res.json()
+      setProcessingId(result.video_id)
+      setProcessingStep('排队中...')
       onVideosChange()
-      if (result.video_id) {
-        onStartPractice(result.video_id, file.name)
-      }
     } catch (e: any) {
       alert('上传失败: ' + (e.message || '未知错误'))
-    } finally {
       setUploading(false)
     }
-  }, [onVideosChange, onStartPractice])
+  }, [onVideosChange])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -174,8 +210,8 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
   }, [doUpload])
 
   const handleZoneClick = useCallback(() => {
-    pickAndUploadFile()
-  }, [pickAndUploadFile])
+    if (!uploading) pickAndUploadFile()
+  }, [uploading, pickAndUploadFile])
 
   return (
     <div className="animate-enter max-w-3xl mx-auto px-4 md:px-8 py-4 md:py-8 space-y-6 md:space-y-8">
@@ -206,7 +242,10 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
         {uploading ? (
           <div className="flex flex-col items-center gap-3">
             <div className="w-10 h-10 border-4 border-coral/30 border-t-coral rounded-full animate-spin" />
-            <p className="text-sm text-slate-500">正在上传和处理视频...</p>
+            <p className="text-sm text-slate-500">正在处理视频...</p>
+            {processingStep && (
+              <p className="text-xs text-amber-500 font-mono">{processingStep}</p>
+            )}
           </div>
         ) : (
           <>
@@ -254,6 +293,13 @@ function ImportPage({ videos, onVideosChange, onStartPractice }: {
                   className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg bg-coral/10 text-coral-dark hover:bg-coral/20 transition"
                 >
                   练习
+                </button>
+                <button
+                  onClick={() => handleDelete(v.id, v.name)}
+                  className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition"
+                  title="删除"
+                >
+                  ✕
                 </button>
               </div>
             ))}
@@ -429,6 +475,7 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
           const scoreForm = new FormData()
           scoreForm.append('video_id', meta.videoId)
           scoreForm.append('sentence_index', String(meta.sentenceIdx))
+          scoreForm.append('age_group', 'child')
           scoreForm.append('file', blob, `recording_${meta.sentenceIdx}.webm`)
           api<ScoreResult>('/api/score', { method: 'POST', body: scoreForm })
             .then(result => {
@@ -609,8 +656,8 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
               <div className="w-5 h-5 border-2 border-coral/30 border-t-coral rounded-full animate-spin shrink-0" />
             )}
             {sentenceScores[activeIdx] && !scoring && (
-              <span className={`text-xs font-bold px-2 py-1 rounded-full border ${scoreBadge(sentenceScores[activeIdx].overall)}`}>
-                {sentenceScores[activeIdx].overall}分
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${medalDisplay(sentenceScores[activeIdx].overall).cls}`}>
+                {medalDisplay(sentenceScores[activeIdx].overall).emoji} {medalDisplay(sentenceScores[activeIdx].overall).text}
               </span>
             )}
           </div>
@@ -657,8 +704,8 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
                       </p>
                     </div>
                     {sentenceScores[i] && (
-                      <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border mt-1 ${scoreBadge(sentenceScores[i].overall)}`}>
-                        {sentenceScores[i].overall}
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full border mt-1 ${medalDisplay(sentenceScores[i].overall).cls}`}>
+                        {medalDisplay(sentenceScores[i].overall).emoji} {medalDisplay(sentenceScores[i].overall).text}
                       </span>
                     )}
                   </div>
@@ -685,7 +732,7 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
 
 // ── History Page ───────────────────────────────────────────────────────────
 
-function HistoryPage({ history }: { history: HistoryItem[] }) {
+function HistoryPage({ history, onStartPractice }: { history: HistoryItem[]; onStartPractice: (id: string, name: string) => void }) {
   return (
     <div className="animate-enter max-w-3xl mx-auto px-4 md:px-8 py-4 md:py-8 space-y-4 md:space-y-6">
       <div>
@@ -699,25 +746,28 @@ function HistoryPage({ history }: { history: HistoryItem[] }) {
         <>
           {/* Desktop: table */}
           <div className="hidden sm:block rounded-xl border border-amber-100 bg-white shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[100px_1fr_70px_80px] gap-4 px-5 py-3 border-b border-amber-100 text-xs text-slate-400 font-medium">
+            <div className="grid grid-cols-[100px_1fr_60px_80px_80px] gap-4 px-5 py-3 border-b border-amber-100 text-xs text-slate-400 font-medium">
               <span>日期</span>
               <span>视频名称</span>
-              <span className="text-center">句子数</span>
-              <span className="text-center">评分</span>
+              <span className="text-center">已练</span>
+              <span className="text-center">总句</span>
+              <span className="text-center">均分</span>
             </div>
             {history.map((h, i) => (
               <div
                 key={i}
-                className={`grid grid-cols-[100px_1fr_70px_80px] gap-4 px-5 py-3.5 items-center transition-colors duration-150 ${
+                onClick={() => h.practiced > 0 && onStartPractice(h.video_id, h.video)}
+                className={`grid grid-cols-[100px_1fr_60px_80px_80px] gap-4 px-5 py-3.5 items-center transition-colors duration-150 ${
                   i === 0 ? 'bg-coral/[0.03]' : ''
-                } hover:bg-amber-50 border-b border-amber-50 last:border-0 cursor-pointer`}
+                } hover:bg-amber-50 border-b border-amber-50 last:border-0 ${h.practiced > 0 ? 'cursor-pointer' : ''}`}
               >
                 <span className="text-sm text-slate-500">{h.date}</span>
-                <span className="text-sm text-slate-700">{h.video}</span>
+                <span className="text-sm text-slate-700 truncate">{h.video}</span>
+                <span className="text-sm text-slate-400 text-center">{h.practiced}</span>
                 <span className="text-sm text-slate-400 text-center">{h.sentences}</span>
                 <div className="flex justify-center">
-                  <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${scoreBadge(h.score)}`}>
-                    {h.score}
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${h.avg_score > 0 ? medalDisplay(h.avg_score).cls : 'text-slate-300 bg-slate-50 border-slate-200'}`}>
+                    {h.avg_score > 0 ? `${medalDisplay(h.avg_score).emoji} ${medalDisplay(h.avg_score).text}` : '-'}
                   </span>
                 </div>
               </div>
@@ -729,22 +779,23 @@ function HistoryPage({ history }: { history: HistoryItem[] }) {
             {history.map((h, i) => (
               <div
                 key={i}
+                onClick={() => h.practiced > 0 && onStartPractice(h.video_id, h.video)}
                 className={`rounded-xl border px-4 py-3.5 bg-white shadow-sm ${
                   i === 0 ? 'border-coral/30' : 'border-amber-100'
-                }`}
+                } ${h.practiced > 0 ? 'cursor-pointer' : ''}`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-slate-400">{h.date}</span>
-                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${scoreBadge(h.score)}`}>
-                    {h.score} 分
+                  <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${h.avg_score > 0 ? medalDisplay(h.avg_score).cls : 'text-slate-300 bg-slate-50 border-slate-200'}`}>
+                    {h.avg_score > 0 ? `${medalDisplay(h.avg_score).emoji} ${medalDisplay(h.avg_score).text}` : '-'}
                   </span>
                 </div>
                 <p className="text-sm text-slate-700 font-medium truncate">{h.video}</p>
                 <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-                  <span>句子: {h.sentences}</span>
+                  <span>练习: {h.practiced}/{h.sentences} 句</span>
                   <span>·</span>
-                  <span className={h.score >= 80 ? 'text-emerald-600 font-medium' : h.score >= 60 ? 'text-amber-600 font-medium' : 'text-rose-600 font-medium'}>
-                    {h.score >= 80 ? '优秀' : h.score >= 60 ? '良好' : '继续加油'}
+                  <span className={h.avg_score >= 80 ? 'text-emerald-600 font-medium' : h.avg_score >= 60 ? 'text-amber-600 font-medium' : 'text-rose-600 font-medium'}>
+                    {h.avg_score >= 80 ? '优秀' : h.avg_score >= 60 ? '良好' : h.practiced > 0 ? '继续加油' : '未练习'}
                   </span>
                 </div>
               </div>
@@ -805,7 +856,7 @@ export default function App() {
           onBackToImport={() => setTab('import')}
         />
       )}
-      {tab === 'history' && <HistoryPage history={history} />}
+      {tab === 'history' && <HistoryPage history={history} onStartPractice={handleStartPractice} />}
     </div>
   )
 }
