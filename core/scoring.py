@@ -18,9 +18,10 @@ from Levenshtein import distance as lev_dist
 
 from core.phonemes import phoneme_accuracy, text_to_phonemes
 
-# ── Model ─────────────────────────────────────────────────────────────────────
-WHISPER_CLI = "/tmp/whisper.cpp/build/bin/whisper-cli"
-WHISPER_MODEL = "/tmp/whisper.cpp/models/ggml-small.en.bin"
+# ── Model (persistent storage) ─────────────────────────────────────────────────
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+WHISPER_CLI = str(_DATA_DIR / "bin/whisper-cli")
+WHISPER_MODEL = str(_DATA_DIR / "models/ggml-small.en.bin")
 
 
 # ── Scoring profiles for different age groups ─────────────────────────────────

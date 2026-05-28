@@ -1,7 +1,19 @@
 """Phoneme conversion for pronunciation scoring via espeak-ng."""
 
+import os
 import re
 import subprocess
+from pathlib import Path
+
+# Persistent espeak-ng installation
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_ESPEAK_BIN = _DATA_DIR / "bin/espeak-ng"
+_ESPEAK_LIB = _DATA_DIR / "lib"
+_ESPEAK_DATA = _DATA_DIR / "espeak-ng-data"
+
+_ENV = os.environ.copy()
+_ENV["ESPEAK_DATA_PATH"] = str(_ESPEAK_DATA)
+_ENV["LD_LIBRARY_PATH"] = str(_ESPEAK_LIB)
 
 
 def text_to_phonemes(text: str) -> str:
@@ -14,9 +26,9 @@ def text_to_phonemes(text: str) -> str:
         Space-separated phoneme string, e.g. "h əl ˈə ʊ w ˈɜː l d".
     """
     result = subprocess.run(
-        ["espeak-ng", "-q", "--ipa=3", "-x", text],
+        [str(_ESPEAK_BIN), "-q", "--ipa=3", "-x", text],
         capture_output=True, text=True,
-        timeout=30,
+        timeout=30, env=_ENV,
     )
     raw = result.stdout.strip()
     phonemes = re.sub(r"\s+", " ", raw).strip()

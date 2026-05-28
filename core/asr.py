@@ -8,9 +8,10 @@ import json
 import subprocess
 from pathlib import Path
 
-# Path to whisper.cpp binary and model
-WHISPER_CLI = Path("/tmp/whisper.cpp/build/bin/whisper-cli")
-WHISPER_MODEL = Path("/tmp/whisper.cpp/models/ggml-tiny.en.bin")
+# Path to whisper.cpp binary and model (persistent storage)
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+WHISPER_CLI = _DATA_DIR / "bin/whisper-cli"
+WHISPER_MODEL = _DATA_DIR / "models/ggml-tiny.en.bin"
 
 # Ensure these exist
 if not WHISPER_CLI.exists():
