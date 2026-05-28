@@ -8,10 +8,22 @@
 
 ## Critical external dependencies
 
-- **whisper.cpp**: binary at `/tmp/whisper.cpp/build/bin/whisper-cli`, model at `/tmp/whisper.cpp/models/ggml-tiny.en.bin`. Hardcoded in `core/asr.py` and `core/scoring.py`. Must be present at runtime.
+- **whisper.cpp**: binary at `/tmp/whisper.cpp/build/bin/whisper-cli`, model at `/tmp/whisper.cpp/models/ggml-small.en.bin`. Hardcoded in `core/asr.py` and `core/scoring.py`. Must be present at runtime.
+- **espeak-ng**: used in `core/phonemes.py` for IPA phoneme conversion in pronunciation scoring.
 - **ffmpeg** / **ffprobe**: used for audio extraction + duration. Must be on `PATH`.
 - **uv**: package manager. `uv.lock` and `pyproject.toml` at repo root. Mirror at `https://mirrors.aliyun.com/pypi/simple/`.
+- **espeak-ng**: used in `core/phonemes.py` for IPA phoneme conversion in pronunciation scoring.
 - **Levenshtein** C extension: used in `core/align.py` and `core/scoring.py` for WER calculation.
+
+## Scoring
+
+Three-dimension scoring inspired by [Echoic](https://github.com/xialeistudio/echoic):
+- **Pronunciation** (0-100, weight 0.5): WER 35% + CER 25% + PER 40%, calibrated by age profile
+- **Fluency** (0-100, weight 0.3): rate penalty (30%) + gap penalty (70%), Echoic-style
+- **Completeness** (0-100, weight 0.2): fraction of reference words spoken
+- **Overall**: pronunciation×0.5 + fluency×0.3 + completeness×0.2
+
+Age profiles (`core/scoring.py:PROFILES`): adult (strict), teen, **child (default)**, beginner — each adjusts strictness, ideal rate, gap threshold, and calibration curve.
 
 ## Commands
 
