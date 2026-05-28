@@ -28,13 +28,14 @@ jobs:
     if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
-      - name: Build Android APK
-        uses: digreatbrian/buildozer-action@v2
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
         with:
-          python-version: 3.12
-          buildozer-cmd: cd kivy_app && buildozer -v android debug
+          workdir: kivy_app
+          buildozer_version: stable
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: readafterme-apk
-          path: kivy_app/bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
