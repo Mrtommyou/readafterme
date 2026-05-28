@@ -39,6 +39,9 @@ jobs:
           pip install --upgrade Cython buildozer
       - name: Install Android SDK (cmdline-tools)
         run: |
+          # cmdline-tools requires Java 17+
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$PATH
           rm -rf ~/.buildozer/android/platform/android-sdk
           SDK_ROOT=~/.buildozer/android/platform/android-sdk
           mkdir -p "$SDK_ROOT"
@@ -52,6 +55,8 @@ jobs:
           yes | cmdline-tools/latest/bin/sdkmanager --sdk_root="$SDK_ROOT" --licenses
       - name: Build APK
         run: |
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export PATH=$JAVA_HOME/bin:$PATH
           cd kivy_app
           buildozer -v android debug
       - name: Upload APK
