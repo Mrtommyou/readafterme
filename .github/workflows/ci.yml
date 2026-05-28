@@ -28,13 +28,23 @@ jobs:
     if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
-      - name: Build APK with Buildozer Docker
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
         run: |
-          docker run --rm \
-            -v $PWD/kivy_app:/workspace \
-            -w /workspace \
-            ghcr.io/kivy/buildozer:latest \
-            bash -c "yes | buildozer -v android debug"
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
+          pip install --upgrade Cython buildozer
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+      - name: Build APK
+        run: |
+          cd kivy_app
+          yes | buildozer -v android debug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
