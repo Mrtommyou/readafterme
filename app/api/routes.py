@@ -16,11 +16,17 @@ from core.translate import translate_batch
 
 router = APIRouter()
 
+
+@router.get("/health")
+async def health():
+    return {"status": "ok"}
+
 # ── File paths ──────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = ROOT / "data"
 UPLOAD_DIR = DATA_DIR / "uploads"
 AUDIO_DIR = DATA_DIR / "audio"
+SCORES_DIR = DATA_DIR / "scores"
 DB_FILE = DATA_DIR / "videos.json"
 
 
@@ -248,13 +254,65 @@ async def score_recording(
         raw_path.unlink(missing_ok=True)
         wav_path.unlink(missing_ok=True)
         raise HTTPException(500, f"Audio conversion failed: {e}")
-    finally:
-        raw_path.unlink(missing_ok=True)
 
     # Score: let scoring module handle transcription + timing
     scores = score_user_recording(ref_text, str(wav_path), ref_duration)
 
     return ScoreResult(**scores)
+
+
+# ── Save / Load Recordings ───────────────────────────────────────────────────
+
+@router.post("/recordings")
+async def save_recording(
+    video_id: str = Form(...),
+    sentence_index: int = Form(...),
+    file: UploadFile = File(...),
+):
+    """Save a user recording for a specific sentence (without scoring)."""
+    user_audio_dir = AUDIO_DIR / f"user_{video_id}"
+    user_audio_dir.mkdir(parents=True, exist_ok=True)
+    recording_path = user_audio_dir / f"sentence_{sentence_index:04d}.webm"
+    content = await file.read()
+    recording_path.write_bytes(content)
+    return {"url": f"/api/recordings/{video_id}/{sentence_index}/file"}
+
+
+@router.get("/recordings/{video_id}/{sentence_index}/file")
+async def get_recording(video_id: str, sentence_index: int):
+    """Serve a saved user recording."""
+    recording_path = AUDIO_DIR / f"user_{video_id}" / f"sentence_{sentence_index:04d}.webm"
+    if not recording_path.exists():
+        raise HTTPException(404, "Recording not found")
+    return FileResponse(str(recording_path), media_type="audio/webm")
+
+
+# ── Save / Load Scores ───────────────────────────────────────────────────────
+
+@router.post("/recordings/score")
+async def save_score(data: dict):
+    """Save a score result for a specific sentence."""
+    video_id = data.get("video_id")
+    sentence_idx = data.get("sentence_index")
+    score = data.get("score")
+    if not video_id or sentence_idx is None or not score:
+        raise HTTPException(400, "Missing required fields")
+
+    SCORES_DIR.mkdir(parents=True, exist_ok=True)
+    scores_file = SCORES_DIR / f"{video_id}.json"
+    scores = json.loads(scores_file.read_text()) if scores_file.exists() else {}
+    scores[str(sentence_idx)] = score
+    scores_file.write_text(json.dumps(scores, ensure_ascii=False))
+    return {"ok": True}
+
+
+@router.get("/recordings/{video_id}/scores")
+async def get_scores(video_id: str):
+    """Get all saved scores for a video."""
+    scores_file = SCORES_DIR / f"{video_id}.json"
+    if scores_file.exists():
+        return json.loads(scores_file.read_text())
+    return {}
 
 
 # ── History ──────────────────────────────────────────────────────────────────

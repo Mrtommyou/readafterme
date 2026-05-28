@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [web-frontend]
   pull_request:
-    branches: [master]
+    branches: [web-frontend]
   workflow_dispatch:
 
 jobs:
@@ -17,50 +17,5 @@ jobs:
           python-version: "3.12"
       - name: Install uv
         run: pip install uv
-      - name: Lint kivy_app with ruff
-        run: uv run ruff check kivy_app/
-      - name: Lint app with ruff
-        run: uv run ruff check app/ core/
-
-  build:
-    needs: lint
-    runs-on: ubuntu-22.04
-    if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
-          pip install --upgrade Cython buildozer
-      - name: Install Android SDK (cmdline-tools)
-        run: |
-          # cmdline-tools requires Java 17+
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$PATH
-          rm -rf ~/.buildozer/android/platform/android-sdk
-          SDK_ROOT=~/.buildozer/android/platform/android-sdk
-          mkdir -p "$SDK_ROOT"
-          cd "$SDK_ROOT"
-          curl -sSOL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q commandlinetools-linux-*.zip
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/bin cmdline-tools/lib cmdline-tools/NOTICE.txt cmdline-tools/latest/
-          mkdir -p tools/bin
-          ln -s "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" tools/bin/sdkmanager
-          yes | cmdline-tools/latest/bin/sdkmanager --sdk_root="$SDK_ROOT" --licenses
-      - name: Build APK
-        run: |
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          export PATH=$JAVA_HOME/bin:$PATH
-          cd kivy_app
-          buildozer -v android debug
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: readafterme-apk
-          path: kivy_app/bin/*.apk
+      - name: Lint with ruff
+        run: uv run ruff check app/ core/ kivy_app/

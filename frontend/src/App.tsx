@@ -60,33 +60,7 @@ function scoreBadge(score: number) {
 }
 
 // ── Score Ring Component ───────────────────────────────────────────────────
-
-function ScoreRing({ pct, label, color }: { pct: number; label: string; color: string }) {
-  const r = 34
-  const c = 2 * Math.PI * r
-  const offset = c * (1 - pct / 100)
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative w-24 h-24">
-        <svg className="w-24 h-24 -rotate-90" viewBox="0 0 80 80">
-          <circle cx="40" cy="40" r={r} fill="none" stroke="#f1e9dd" strokeWidth="5" />
-          <circle
-            cx="40" cy="40" r={r}
-            fill="none" stroke={color} strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={c}
-            strokeDashoffset={offset}
-            className="transition-all duration-1000 ease-out"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xl font-bold" style={{ color }}>{pct}%</span>
-        </div>
-      </div>
-      <span className="text-sm text-slate-500">{label}</span>
-    </div>
-  )
-}
+// (removed — kept in git history)
 
 // ── Waveform ───────────────────────────────────────────────────────────────
 
@@ -301,15 +275,22 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
   const [loading, setLoading] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
   const [scoring, setScoring] = useState(false)
-  const [scores, setScores] = useState<ScoreResult | null>(null)
+  const [sentenceScores, setSentenceScores] = useState<Record<number, ScoreResult>>({})
   const [recording, setRecording] = useState(false)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
   const audioChunks = useRef<Blob[]>([])
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
+  const recordedUrlRef = useRef<string | null>(null)
+  const [recordedDuration, setRecordedDuration] = useState(0)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const recTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const playTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const autoStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [playbackPosition, setPlaybackPosition] = useState(0)
+  const audioPlayer = useRef<HTMLAudioElement | null>(null)
+  const recordingMeta = useRef<{videoId: string; sentenceIdx: number} | null>(null)
 
   // Fetch sentences when video is selected
   useEffect(() => {
@@ -323,25 +304,65 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
     ).then(data => {
       setSentences(data.sentences)
       setActiveIdx(0)
-      setScores(null)
+      setSentenceScores({})
       setRecordedBlob(null)
+      setRecordedDuration(0)
+      setPlaybackPosition(0)
+      if (playTimer.current) clearInterval(playTimer.current)
+      // Load saved scores for this video
+      fetch(`/api/recordings/${selectedVideoId}/scores`)
+        .then(r => r.json())
+        .then(scores => {
+          const parsed: Record<number, ScoreResult> = {}
+          for (const [k, v] of Object.entries(scores)) {
+            parsed[Number(k)] = v as ScoreResult
+          }
+          setSentenceScores(parsed)
+        })
+        .catch(() => {})
     }).catch(() => {
       setSentences([])
     }).finally(() => setLoading(false))
   }, [selectedVideoId])
 
+  // Load saved recording when switching sentences
+  useEffect(() => {
+    if (!selectedVideoId || sentences.length === 0) return
+    const idx = activeIdx
+    const loadSaved = async () => {
+      try {
+        const resp = await fetch(`/api/recordings/${selectedVideoId}/${idx}/file`)
+        if (!resp.ok) {
+          setRecordedBlob(null)
+          setRecordedDuration(0)
+          return
+        }
+        const blob = await resp.blob()
+        if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+        recordedUrlRef.current = URL.createObjectURL(blob)
+        setRecordedBlob(blob)
+        const audio = new Audio(recordedUrlRef.current)
+        audio.onloadedmetadata = () => {
+          setRecordedDuration(Math.floor(audio.duration))
+          audio.remove()
+        }
+      } catch {
+        setRecordedBlob(null)
+        setRecordedDuration(0)
+      }
+    }
+    loadSaved()
+  }, [selectedVideoId, activeIdx, sentences.length])
+
   // Auto-highlight + pause at end of current sentence
   const onTimeUpdate = () => {
     if (!videoRef.current || sentences.length === 0) return
     const t = videoRef.current.currentTime
-
-    // Pause when current sentence finishes (user can replay easily)
     const cur = sentences[activeIdx]
     if (cur && t >= cur.end && t < cur.end + 0.5) {
       videoRef.current.pause()
       return
     }
-
     const idx = sentences.findIndex(s => t >= s.start && t < s.end)
     if (idx >= 0 && idx !== activeIdx) {
       setActiveIdx(idx)
@@ -352,31 +373,36 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
   const seekToSentence = (idx: number) => {
     if (!videoRef.current || !sentences[idx]) return
     setActiveIdx(idx)
-    setScores(null)
-    setRecordedBlob(null)
     videoRef.current.currentTime = sentences[idx].start
     videoRef.current.play()
   }
 
-  // Start recording
+  // ── Recording ────────────────────────────────────────────────────────────
+
   const startRecording = async () => {
     try {
-      // Check for secure context requirement
       if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        const ok = confirm('录音需要 HTTPS 连接。Android 浏览器通过 LAN IP 访问时可能会被阻止。\n\n推荐方案:\n1. 使用 Chrome 浏览器\n2. 通过 USB 调试 (adb reverse tcp:9005 tcp:9005)\n3. 或者继续尝试 (可能失败)\n\n是否继续尝试？')
+        const ok = confirm('录音需要 HTTPS 连接。\n\n是否继续尝试？')
         if (!ok) return
       }
+      if (audioPlayer.current) {
+        audioPlayer.current.pause()
+        audioPlayer.current = null
+      }
+      setPlaying(false)
+      setPlaybackPosition(0)
+      if (playTimer.current) clearInterval(playTimer.current)
 
+      videoRef.current?.pause()
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-
-      // Pick best supported MIME type for MediaRecorder
       const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', '']
       const mrType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || ''
       const mr = new MediaRecorder(stream, mrType ? { mimeType: mrType } : undefined)
       mediaRecorder.current = mr
       audioChunks.current = []
+      recordingMeta.current = { videoId: selectedVideoId!, sentenceIdx: activeIdx }
       setRecordedBlob(null)
-      setScores(null)
+      setRecordedDuration(0)
 
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunks.current.push(e.data)
@@ -385,10 +411,41 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
       mr.onstop = () => {
         stream.getTracks().forEach(t => t.stop())
         const blob = new Blob(audioChunks.current, { type: mrType || 'audio/webm' })
+        if (recordedUrlRef.current) URL.revokeObjectURL(recordedUrlRef.current)
+        recordedUrlRef.current = URL.createObjectURL(blob)
         setRecordedBlob(blob)
-        setRecordingDuration(0)
-        if (audioRef.current) {
-          audioRef.current.src = URL.createObjectURL(blob)
+
+        const meta = recordingMeta.current
+        if (meta) {
+          // Save recording
+          const saveForm = new FormData()
+          saveForm.append('video_id', meta.videoId)
+          saveForm.append('sentence_index', String(meta.sentenceIdx))
+          saveForm.append('file', blob, `recording_${meta.sentenceIdx}.webm`)
+          fetch('/api/recordings', { method: 'POST', body: saveForm }).catch(() => {})
+
+          // Auto-score
+          setScoring(true)
+          const scoreForm = new FormData()
+          scoreForm.append('video_id', meta.videoId)
+          scoreForm.append('sentence_index', String(meta.sentenceIdx))
+          scoreForm.append('file', blob, `recording_${meta.sentenceIdx}.webm`)
+          api<ScoreResult>('/api/score', { method: 'POST', body: scoreForm })
+            .then(result => {
+              setSentenceScores(prev => ({ ...prev, [meta.sentenceIdx]: result }))
+              // Persist score
+              fetch('/api/recordings/score', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  video_id: meta.videoId,
+                  sentence_index: meta.sentenceIdx,
+                  score: result,
+                }),
+              }).catch(() => {})
+            })
+            .catch(() => {})
+            .finally(() => setScoring(false))
         }
       }
 
@@ -398,14 +455,21 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
       recTimer.current = setInterval(() => {
         setRecordingDuration(Math.floor((Date.now() - startTime) / 1000))
       }, 200)
+      const sentence = sentences[activeIdx]
+      if (sentence) {
+        const maxDuration = Math.ceil(sentence.end - sentence.start) + 1
+        autoStopTimer.current = setTimeout(() => {
+          if (mediaRecorder.current?.state === 'recording') {
+            stopRecording()
+          }
+        }, maxDuration * 1000)
+      }
     } catch (e: any) {
       const msg = e?.name || e?.message || '未知错误'
       if (msg === 'NotAllowedError') {
-        alert('麦克风权限被拒绝，请在浏览器设置中允许麦克风访问')
+        alert('麦克风权限被拒绝')
       } else if (msg === 'NotFoundError') {
-        alert('未找到麦克风设备，请确保已连接麦克风')
-      } else if (msg.includes('Secure') || msg.includes('secure')) {
-        alert('录音需要 HTTPS 连接，当前页面不是安全连接。请用 Chrome 浏览器打开。')
+        alert('未找到麦克风设备')
       } else {
         alert('无法访问麦克风: ' + msg)
       }
@@ -413,30 +477,40 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
   }
 
   const stopRecording = () => {
+    setRecordedDuration(recordingDuration)
     mediaRecorder.current?.stop()
     setRecording(false)
     if (recTimer.current) clearInterval(recTimer.current)
+    if (autoStopTimer.current) clearTimeout(autoStopTimer.current)
   }
 
   const playRecording = () => {
-    audioRef.current?.play()
-  }
-
-  const submitScoring = async () => {
-    if (!recordedBlob || !selectedVideoId) return
-    setScoring(true)
-    try {
-      const form = new FormData()
-      form.append('video_id', selectedVideoId)
-      form.append('sentence_index', String(activeIdx))
-      form.append('file', recordedBlob, `recording_${activeIdx}.webm`)
-      const result = await api<ScoreResult>('/api/score', { method: 'POST', body: form })
-      setScores(result)
-    } catch (e: any) {
-      alert('评分失败: ' + (e.message || '未知错误'))
-    } finally {
-      setScoring(false)
+    const url = recordedUrlRef.current
+    if (!url) return
+    if (playing) {
+      audioPlayer.current?.pause()
+      setPlaying(false)
+      if (playTimer.current) clearInterval(playTimer.current)
+      return
     }
+    const audio = new Audio(url)
+    audioPlayer.current = audio
+    audio.onended = () => {
+      setPlaying(false)
+      setPlaybackPosition(0)
+      if (playTimer.current) clearInterval(playTimer.current)
+    }
+    audio.onpause = () => {
+      setPlaying(false)
+    }
+    audio.play().then(() => {
+      setPlaying(true)
+      setPlaybackPosition(0)
+      if (playTimer.current) clearInterval(playTimer.current)
+      playTimer.current = setInterval(() => {
+        setPlaybackPosition(Math.floor(audio.currentTime))
+      }, 200)
+    }).catch(() => {})
   }
 
   // No video selected — prompt user
@@ -455,6 +529,11 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
       </div>
     )
   }
+
+  const allScores = Object.entries(sentenceScores) as [string, ScoreResult][]
+  const avgOverall = allScores.length > 0
+    ? Math.round(allScores.reduce((s, [, v]) => s + v.overall, 0) / allScores.length)
+    : 0
 
   return (
     <div className="animate-enter max-w-7xl mx-auto px-4 md:px-8 py-4 md:py-8 space-y-4 md:space-y-6">
@@ -509,9 +588,8 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
               disabled={!recordedBlob}
               className="w-10 h-10 md:w-11 md:h-11 rounded-full bg-gradient-to-br from-sky-400 to-blue-400 hover:from-blue-400 hover:to-sky-400 text-white flex items-center justify-center transition-all shrink-0 text-base md:text-lg shadow-md shadow-sky-200 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              ▶
+              {playing ? '⏸' : '▶'}
             </button>
-            <audio ref={audioRef} className="hidden" />
             <div className="hidden sm:block flex-1">
               <Waveform />
             </div>
@@ -519,38 +597,23 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
               <WaveformBars count={20} />
             </div>
             <span className="text-[10px] md:text-xs text-slate-400 tabular-nums shrink-0">
-              {recording ? `00:${recordingDuration.toString().padStart(2, '0')}` : '00:00 / 00:00'}
+              {recording
+                ? `00:${recordingDuration.toString().padStart(2, '0')}`
+                : playing
+                  ? `00:${playbackPosition.toString().padStart(2, '0')} / 00:${recordedDuration.toString().padStart(2, '0')}`
+                  : recordedDuration > 0
+                    ? `00:${recordedDuration.toString().padStart(2, '0')}`
+                    : ''}
             </span>
-            {recordedBlob && !scoring && !scores && (
-              <button
-                onClick={submitScoring}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg bg-coral/10 text-coral-dark hover:bg-coral/20 transition shrink-0"
-              >
-                评分
-              </button>
-            )}
             {scoring && (
               <div className="w-5 h-5 border-2 border-coral/30 border-t-coral rounded-full animate-spin shrink-0" />
             )}
+            {sentenceScores[activeIdx] && !scoring && (
+              <span className={`text-xs font-bold px-2 py-1 rounded-full border ${scoreBadge(sentenceScores[activeIdx].overall)}`}>
+                {sentenceScores[activeIdx].overall}分
+              </span>
+            )}
           </div>
-
-          {/* Score Display */}
-          {scores && (
-            <div className="rounded-xl border border-amber-100 bg-white shadow-sm p-4 md:p-6">
-              <div className="flex items-center justify-between mb-4 md:mb-6">
-                <h3 className="text-sm md:text-base font-semibold text-slate-700">📈 评分概览</h3>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-2xl md:text-3xl font-bold text-coral-dark">{scores.overall}</span>
-                  <span className="text-xs md:text-sm text-slate-400">/ 100</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-center gap-6 sm:gap-10 md:gap-16 flex-wrap">
-                <ScoreRing pct={scores.pronunciation} label="发音准确度" color="#fb7185" />
-                <ScoreRing pct={scores.fluency} label="流利度" color="#fbbf24" />
-                <ScoreRing pct={scores.timing} label="节奏匹配" color="#34d399" />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right: Sentence Panel */}
@@ -576,25 +639,43 @@ function PracticePage({ selectedVideoId, selectedVideoName, onBackToImport }: {
                   <div
                     key={i}
                     onClick={() => seekToSentence(i)}
-                    className={`px-3 md:px-4 py-2.5 md:py-3 rounded-lg cursor-pointer transition-all duration-200 border ${
+                    className={`px-3 md:px-4 py-2.5 md:py-3 rounded-lg cursor-pointer transition-all duration-200 border flex items-start justify-between gap-2 ${
                       i === activeIdx
                         ? 'bg-coral/[0.06] border-coral/30 shadow-sm'
                         : 'bg-white border-transparent hover:bg-amber-50 hover:border-amber-200'
                     }`}
                   >
-                    <p className={`text-xs md:text-sm leading-relaxed ${i === activeIdx ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
-                      {s.en}
-                    </p>
-                    <p className={`text-[10px] md:text-xs mt-1 ${i === activeIdx ? 'text-slate-500' : 'text-slate-400'}`}>
-                      {s.zh || ''}
-                    </p>
-                    <p className="text-[9px] md:text-[10px] text-slate-300 mt-1 tabular-nums">
-                      {s.start.toFixed(1)}s - {s.end.toFixed(1)}s
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs md:text-sm leading-relaxed ${i === activeIdx ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
+                        {s.en}
+                      </p>
+                      <p className={`text-[10px] md:text-xs mt-1 ${i === activeIdx ? 'text-slate-500' : 'text-slate-400'}`}>
+                        {s.zh || ''}
+                      </p>
+                      <p className="text-[9px] md:text-[10px] text-slate-300 mt-1 tabular-nums">
+                        {s.start.toFixed(1)}s - {s.end.toFixed(1)}s
+                      </p>
+                    </div>
+                    {sentenceScores[i] && (
+                      <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border mt-1 ${scoreBadge(sentenceScores[i].overall)}`}>
+                        {sentenceScores[i].overall}
+                      </span>
+                    )}
                   </div>
                 ))
               )}
             </div>
+            {allScores.length > 0 && (
+              <div className="px-4 md:px-5 py-3 md:py-4 border-t border-amber-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">已评分 {allScores.length}/{sentences.length} 句</span>
+                  <span className="flex items-baseline gap-1">
+                    <span className="text-lg font-bold text-coral-dark">{avgOverall}</span>
+                    <span className="text-xs text-slate-400">平均分</span>
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

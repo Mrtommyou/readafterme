@@ -3,7 +3,7 @@
 ## Architecture
 
 - **Backend**: Python 3.12 + FastAPI (`app/`) with REST API routes in `app/api/routes.py`. Run via `uv run python run.py`.
-- **Frontend**: Kivy app (`kivy_app/`) — Buildozer for Android APK
+- **Frontend**: React SPA (`frontend/`) — served by FastAPI as static files (SPA catch-all at `/`)
 - **Core logic** in `core/`: ASR (whisper.cpp), audio (ffmpeg), alignment, translation, scoring.
 
 ## Critical external dependencies
@@ -16,8 +16,9 @@
 ## Commands
 
 - `uv run python run.py` — start backend dev server on port 9004 (default; override via `PORT` env var). Hot reload via uvicorn `reload=True`.
-- `uv run ruff check kivy_app/` — lint Kivy app code
-- `cd kivy_app && buildozer android debug` — build Android APK
+- `uv run ruff check app/ core/ kivy_app/` — lint all Python code
+- `cd frontend && npm run build` — build React frontend (outputs to `frontend/dist/`)
+- `cd frontend && npx tsc --noEmit` — TypeScript check
 
 ## Quirks
 
@@ -25,7 +26,7 @@
 - ASR output JSON sidecar file pattern: `{audio_path}.json`.
 - `data/` is gitignored; `data/videos.json` is the metadata DB (created at runtime).
 - `pyproject.toml` has `required-environments` restricting to `linux x86_64`.
-- Kivy app API server URL set via env var `API_URL` (default `http://localhost:9004`). On Android emulator use `http://10.0.2.2:9004`.
-- `kivy_app/buildozer.spec` has Android build config. APK builds via CI on push to `main`.
-- Audio recording: Android uses `android.media.MediaRecorder` via pyjnius; desktop uses `sounddevice`.
+- Frontend React app mounts `frontend/dist/` at `/assets`; SPA catch-all serves `index.html` for all non-API, non-asset routes.
+- Audio recording: browser `MediaRecorder` API (webm/opus).
 - `.python-version` pins CPython 3.12.
+- Score persistence: saved as JSON in `data/scores/{video_id}.json` per sentence.
